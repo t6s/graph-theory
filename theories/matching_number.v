@@ -80,63 +80,60 @@ Definition nindmatch G := \max_(S in induced_matchingb G) #| S |.
 
 Definition is_maximal_matching (G : sgraph) : pred {set {set G}} :=
   fun M =>
-    [forall N : {set {set G}}, (M \subset N) ==> (N \notin matchingb G)].
+    (M \in matchingb G) &&
+    [forall N : {set {set G}}, (M \proper N) ==> (N \notin matchingb G)].
 Definition maximal_matchingb (G : sgraph) : {set {set {set G}}} :=
   [set M | is_maximal_matching M].
 
 Definition nminmatch (G : sgraph) :=
   \big[minn/0]_(M <- enum (maximal_matchingb G)) #|M|.
 (*
-Unset Printing Notations.
-Print nminmatch.
-Print BigOp.bigop.
-*)
-
-Definition mkmm (G : sgraph) (M : {set {set G}}) := (M, #|M|).
-(*
-Set Printing All.
 Fail Definition nminmatch' (G : sgraph) :=
   foldr (fun M n => minn #|M| n)
         0 (enum (maximal_matchingb G)).
-Variable G : sgraph.
-Check enum (maximal_matchingb G) : seq (@pred_sort _ _).
-Definition F (G : sgraph) :=
-  (enum (maximal_matchingb G)) : seq (_ : finType). 
 
-
-(enum ...) : seq (pred_sort (set_of_finType (set_of_finType G)))
-
------
-#|M|
-     : nat
-where
-?T : [ |- finType]
-set_of_finType (set_of_finType G) : [ |- predType ?T]
-M : [ |- pred_sort (set_of_finType (set_of_finType G))]
-----
-enum (maximal_matchingb G)
-     : seq (pred_sort (set_of_finType (set_of_finType G)))
-where
-pred_sort (set_of_finType (set_of_finType G)) : [ |- finType]
-?pU : [ |- predType (pred_sort (set_of_finType (set_of_finType G)))]
-maximal_matchingb G : [ |- pred_sort ?pU]
-----
-maximal_matchingb G
-     : pred_sort (set_of_finType (set_of_finType G)) = pred_sort ?pT
-
-
-Fail Definition nminmatch' (G : sgraph) :=
-  foldr (fun M n => let x := (M, #|M|).2 in minn x n)
+Definition idM (G : sgraph) (M : {set {set G}}) := M.
+Definition nminmatch' (G : sgraph) :=
+  foldr (fun M n => minn #|idM M| n)
         0 (enum (maximal_matchingb G)).
 *)
-Definition nminmatch' (G : sgraph) :=
-  foldr (fun M n => let x := (mkmm M).2 in minn x n)
-        0 (enum (maximal_matchingb G)).
-Definition nminmatch'' (G : sgraph) :=
-  foldr (fun (M : set_of_finType (set_of_finType G)) n => minn #| M | n)
-        0 (enum (maximal_matchingb G)).
 
-Goal forall G, nmatch G <= (nminmatch G).*2.
+(* Hibi-Higashitani-Kimura-O'keefe inequalities *)
+Lemma HHKO_1 G : nindmatch G <= nminmatch G.
+Abort.
+Lemma HHKO_2 G : nminmatch G <= nmatch G.
+Proof.
+case/boolP: (pred0b (matchingb G)).
+- move/pred0P=> H.
+  rewrite /nminmatch /maximal_matchingb /is_maximal_matching /nmatch /=.
+  rewrite [in X in _ <= X]big_pred0; last by move=> i; rewrite /= /in_mem /= H.
+  rewrite big_seq /= big_pred0 ? leqnn //.
+  have-> : [set M in matchingb G | [forall N: {set {set G}},
+                                                  (M \proper N) ==>
+                                                  (N \notin matchingb G)]] = set0
+    by apply eq_finset=> i; rewrite/in_mem/= H /=.
+  move=> i.
+  by rewrite enum_set0.
+- case/pred0Pn => z mGz.
+  rewrite /nminmatch /nmatch /=.
+  have H: {subset maximal_matchingb G <= matchingb G} 
+    by move=> M; rewrite inE /is_maximal_matching=> /andP [].
+  have [Max [MmG]]: exists Max,
+      Max \in matchingb G /\
+              \big[minn/0]_(M <- enum (maximal_matchingb G)) #|M| <= #|Max|.
+  + rewrite big_seq.
+    apply big_ind.                                
+    * exists z.
+        by rewrite /in_mem /=; split; [apply mGz | apply leq0n].
+    * move=> x y.
+      case=> x0 [] ? xx0 [] ? [] ? ?.
+      exists x0; split=> //; move: xx0; apply leq_trans; apply geq_minl.
+    * move=> M; rewrite mem_enum inE=> /andP [] ? ?.
+      by exists M; split; last by apply leqnn.
+  + move/leq_trans; apply.
+    by apply/leq_bigmax_cond.
+Qed.
+Lemma HHKO_3 G : nmatch G <= (nminmatch G).*2.
 Proof.
 move=> G.
 set q := nminmatch G.
