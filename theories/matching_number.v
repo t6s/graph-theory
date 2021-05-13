@@ -7,14 +7,14 @@ Unset Printing Implicit Defensive.
 
 Set Bullet Behavior "Strict Subproofs".
 
-Definition matchingb (G : sgraph) : pred {set {set G}} :=
-  fun M => 
-    (M \subset E(G))  &&
-    [forall e1,
-        [forall e2,
-            (e1 \in M)
-              ==> (e2 \in M)
-              ==> [forall x : G, (x \in e1) ==> (x \in e2) ==> (e1 == e2)]]].
+Definition matchingb (G : sgraph) :=
+  [pred M : {set {set G}} |
+   (M \subset E(G))  &&
+   [forall e1,
+       [forall e2,
+           (e1 \in M)
+             ==> (e2 \in M)
+             ==> [forall x : G, (x \in e1) ==> (x \in e2) ==> (e1 == e2)]]]].
 Arguments matchingb : clear implicits.
 Lemma matchingP (G : sgraph) (M : {set {set G}}) :
   reflect (matching M) (matchingb G M).
@@ -34,20 +34,20 @@ apply: (iffP idP).
 Qed.
 Definition nmatch G := \max_(S in matchingb G) #| S |.
 
-Definition induced_matchingb (G : sgraph) : pred {set {set G}} :=
-  fun M => 
-    (M \subset E(G))  &&
-    [forall e1,
-        [forall e2,
-            (e1 \in M)
-              ==> (e2 \in M)
-              ==> (e1 != e2)
-              ==>
-              [forall e3,
-                  (e3 \in M)
-                    ==>
-                    (e1 :&: e3 == set0) ||
-                    (e2 :&: e3 == set0) ]]].
+Definition induced_matchingb (G : sgraph) :=
+  [pred M : {set {set G}} |
+   (M \subset E(G))  &&
+   [forall e1,
+       [forall e2,
+           (e1 \in M)
+             ==> (e2 \in M)
+             ==> (e1 != e2)
+             ==>
+             [forall e3,
+                 (e3 \in M)
+                   ==>
+                   (e1 :&: e3 == set0) ||
+                   (e2 :&: e3 == set0) ]]]].
 Arguments induced_matchingb : clear implicits.
 Definition induced_matching (G : sgraph) (M : {set {set G}}) :=
   {subset M <= E(G)} /\
@@ -78,12 +78,12 @@ Qed.
 
 Definition nindmatch G := \max_(S in induced_matchingb G) #| S |.
 
-Definition is_maximal_matching (G : sgraph) : pred {set {set G}} :=
-  fun M =>
-    (M \in matchingb G) &&
-    [forall N : {set {set G}}, (M \proper N) ==> (N \notin matchingb G)].
-Definition maximal_matchingb (G : sgraph) : {set {set {set G}}} :=
-  [set M | is_maximal_matching M].
+Definition is_maximal_matching (G : sgraph) :=
+  [pred M : {set {set G}} |
+   (M \in matchingb G) &&
+   [forall N : {set {set G}}, (M \proper N) ==> (N \notin matchingb G)]].
+Definition maximal_matchingb (G : sgraph) :=
+  [set M | is_maximal_matching G M].
 
 Definition nminmatch (G : sgraph) :=
   \big[minn/0]_(M <- enum (maximal_matchingb G)) #|M|.
@@ -101,20 +101,22 @@ Definition nminmatch' (G : sgraph) :=
 (* Hibi-Higashitani-Kimura-O'keefe inequalities *)
 Lemma HHKO_1 G : nindmatch G <= nminmatch G.
 Abort.
+
+Lemma eq_mem_pred (A : Type) (P Q : pred A) : P =1 Q <-> P =i Q.
+Proof. by rewrite /eq_mem /in_mem /=. Qed.
+
 Lemma HHKO_2 G : nminmatch G <= nmatch G.
 Proof.
 case/boolP: (pred0b (matchingb G)).
 - move/pred0P=> H.
   rewrite /nminmatch /maximal_matchingb /is_maximal_matching /nmatch /=.
-  rewrite [in X in _ <= X]big_pred0; last by move=> i; rewrite /= /in_mem /= H.
-  rewrite big_seq /= big_pred0 ? leqnn //.
-  have-> : [set M in matchingb G | [forall N: {set {set G}},
-                                                  (M \proper N) ==>
-                                                  (N \notin matchingb G)]] = set0
-    by apply eq_finset=> i; rewrite/in_mem/= H /=.
+  rewrite (big_pred0 _ _ _ _ H).
+  rewrite big_seq big_pred0 ?leqnn //.
   move=> i.
-  by rewrite enum_set0.
-- case/pred0Pn => z mGz.
+  move/eq_mem_pred: H.
+  by rewrite mem_enum inE => ->.
+- case/pred0Pn => z. 
+  rewrite -(in_collective z (expose_simpl_pred _)) /= => zmG.
   rewrite /nminmatch /nmatch /=.
   have H: {subset maximal_matchingb G <= matchingb G} 
     by move=> M; rewrite inE /is_maximal_matching=> /andP [].
@@ -123,8 +125,7 @@ case/boolP: (pred0b (matchingb G)).
               \big[minn/0]_(M <- enum (maximal_matchingb G)) #|M| <= #|Max|.
   + rewrite big_seq.
     apply big_ind.                                
-    * exists z.
-        by rewrite /in_mem /=; split; [apply mGz | apply leq0n].
+    * by exists z; split; [rewrite zmG | apply leq0n].
     * move=> x y.
       case=> x0 [] ? xx0 [] ? [] ? ?.
       exists x0; split=> //; move: xx0; apply leq_trans; apply geq_minl.
@@ -133,8 +134,100 @@ case/boolP: (pred0b (matchingb G)).
   + move/leq_trans; apply.
     by apply/leq_bigmax_cond.
 Qed.
-Lemma HHKO_3 G : nmatch G <= (nminmatch G).*2.
+
+Lemma matching_disjoint (G : sgraph) (M N : {set {set G}}) :
+  matching M -> matching N ->
+  (\bigcup_(e in M) e) :&: (\bigcup_(e in N) e) = set0 ->
+  matching (M :|: N).
 Proof.
+case=> HM0 HM1 [] HN0 HN1.
+rewrite big_distrr /=; under eq_bigr do rewrite big_distrl /=.
+move=> H.
+split; first by move=> x; rewrite inE=> /orP; case=> [/HM0 | /HN0].
+move=> m n.
+rewrite !inE=> /orP [] Hm /orP [] Hn x.
+- exact (HM1 m n Hm Hn x).
+- move=> xm xn; exfalso; suff: false by done.
+  move/eqP: H; rewrite -subset0=> /subsetP /(_ x); rewrite inE; apply.
+  apply/bigcupP; exists n=> //.
+  apply/bigcupP; exists m=> //.
+  by rewrite inE.
+- move=> xm xn; exfalso; suff: false by done.
+  move/eqP: H; rewrite -subset0=> /subsetP /(_ x); rewrite inE; apply.
+  apply/bigcupP; exists m=> //.
+  apply/bigcupP; exists n=> //.
+  by rewrite inE.
+- exact (HN1 m n Hm Hn x).
+Qed.
+
+Lemma matching_pushout (G : sgraph) (M N : {set {set G}}) :
+  matching M -> matching N ->
+  matching (M :&: N)-> matching (M :|: N).
+Proof.
+TODO
+
+move=> HM HN HMN.
+apply (matching_setU HM HN).
+rewrite setIC big_distrr /=.
+apply big_ind.
+- done.
+- by move=> ? ? /eqP ? /eqP ?; apply/eqP; rewrite setU_eq0; apply/andP; split.
+- move=> x xM /=.
+  case: (HMN x xM)=> HN0 HN1.
+  apply big_ind.
+  + by rewrite set0I.
+  + move=> y z <-.
+    rewrite setIUl=> <-.
+    by rewrite setUid.
+  + move=> y yN.
+    
+
+   big_distrr.
+; [done | move=> *; apply setU0 |].
+
+apply disjoint_setI0.
+
+
+have-> : \bigcup_(e in N) e = N.
+rewrite big_distrr /=.
+apply/eqP; rewrite -subset0; apply/subsetP=> x; rewrite inE.
+
+Lemma HHKO_3_aux1 G M :
+  forall e, e \in E(G) -> 
+                  M \in maximal_matchingb G ->
+                        exists e', (e' \in M) && (setI e e' != set0).
+Proof.
+move=> e eEG MmG.
+apply/existsP; move: MmG; apply contraLR=> /existsPn.
+have H: (forall x : set_of_finType G, ~~ ((x \in M) && (e :&: x != set0))) ->
+        forall x : set_of_finType G, (x \in M  -> e :&: x == set0)
+          by move=> H x; move: (H x); rewrite negb_and -implybE negbK => /implyP.
+move/H=> {H} H.
+rewrite inE /is_maximal_matching /= negb_and -implybE.
+apply/implyP=> H0.
+apply/forallPn=> /=.  
+exists (e |: M).
+rewrite negb_imply.
+apply/andP; split.
+- apply properUr.
+  apply/negP; rewrite sub1set=> H1.
+  move: (H e)=> /(_ H1).
+  rewrite setIid.
+  case/edgesP: eEG=> x [] y [] -> _.
+  by rewrite -cards_eq0 cards2.
+- rewrite negbK.
+Abort.
+
+Lemma HHKO_3_aux2 G M :
+  M \in maximal_matchingb G ->
+        exists f : {set G} -> G,
+          forall e, e \in E(G) -> f e \in \bigcup_(e in M) e.
+Abort.
+
+
+Lemma HHKO_3 G : nmatch G <= (nminmatch G).*2.
+Abort.
+
 move=> G.
 set q := nminmatch G.
 have: exists S, @is_maximal_matching G S /\ #| S | = q by admit.
