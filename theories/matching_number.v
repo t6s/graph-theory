@@ -135,14 +135,48 @@ case/boolP: (pred0b (matchingb G)).
     by apply/leq_bigmax_cond.
 Qed.
 
-Lemma matching_disjoint (G : sgraph) (M N : {set {set G}}) :
+Definition strongly_disjoint (G : sgraph) (M N : {set {set G}}) :=
+  (\bigcup_(e in M) e) :&: (\bigcup_(e in N) e) == set0.
+
+Lemma strongly_disjointP (G : sgraph) (M N : {set {set G}}):
+  reflect
+    (\bigcup_(i in N) \bigcup_(j in M) (j :&: i) = set0)
+    (strongly_disjoint M N).
+Proof.
+suff-> : strongly_disjoint M N = 
+         (\bigcup_(i in N) \bigcup_(j in M) (j :&: i) == set0) by apply: eqP.
+by rewrite /strongly_disjoint big_distrr /=; under eq_bigr do rewrite big_distrl /=.
+Qed.
+
+Lemma strongly_disjointPn (G : sgraph) (M N : {set {set G}}):
+  reflect
+    (exists i, exists j, i \in M /\ j \in N /\ i :&: j <> set0)
+    (~~ (strongly_disjoint M N)).
+Proof.
+apply: (iffP idP).
+- move/strongly_disjointP.
+  move/eqP=> H.
+  suff: [exists i, [exists j, (i \in M) && (j \in N) && (i :&: j != set0)]]
+    by case/existsP=> [] i /existsP [] j /andP [] /andP [] ? ? /eqP ?; exists i, j.
+  move: H; apply: contraLR=> H.
+  rewrite negbK big1 ?eqxx // => j jN.
+  rewrite big1 ?eqxx // => i iM.
+  move:H => /existsPn /(_ i) /existsPn /(_ j) /nandP [];
+   last by rewrite negbK=> /eqP.
+  by case/nandP; rewrite ?iM ?jN.
+- case=> i [] j [] iM [] jN /eqP /set0Pn [] x.
+  rewrite inE=> /andP [] xi xj.
+  rewrite /strongly_disjoint.
+  apply/set0Pn; exists x; rewrite inE.
+  by apply/andP; split; apply/bigcupP; [exists i | exists j].
+Qed.  
+
+Lemma matching_disjoint_nodes (G : sgraph) (M N : {set {set G}}) :
   matching M -> matching N ->
-  (\bigcup_(e in M) e) :&: (\bigcup_(e in N) e) = set0 ->
+  strongly_disjoint M N ->
   matching (M :|: N).
 Proof.
-case=> HM0 HM1 [] HN0 HN1.
-rewrite big_distrr /=; under eq_bigr do rewrite big_distrl /=.
-move=> H.
+case=> HM0 HM1 [] HN0 HN1 /strongly_disjointP H.
 split; first by move=> x; rewrite inE=> /orP; case=> [/HM0 | /HN0].
 move=> m n.
 rewrite !inE=> /orP [] Hm /orP [] Hn x.
@@ -160,19 +194,31 @@ rewrite !inE=> /orP [] Hm /orP [] Hn x.
 - exact (HN1 m n Hm Hn x).
 Qed.
 
-Lemma matching_pushout' (G : sgraph) (M N : {set {set G}}) :
+Lemma matching_set1U (G : sgraph) (M N : {set {set G}}) :
   matching M -> matching N ->
   (forall e, e \in M -> matching (e |: N)) ->
   matching (M :|: N).
-
-Lemma matching_pushout (G : sgraph) (M N : {set {set G}}) :
-  matching M -> matching N ->
-  matching (M :&: N)-> matching (M :|: N).
 Proof.
-TODO
+case=> /subsetP MEG mM [] /subsetP NEG mN meN.
+split; first by apply/subsetP; rewrite subUset.
+move=> e e' eMN e'MN x.
+case/boolP: (e \in M); case/boolP: (e' \in M).
+- by move=> ? ?; apply mM.
+- rewrite -in_setC=> /(conj e'MN) /setIP.
+  rewrite -setDE setDUl setDv set0U=> /(subsetP (subsetDl N M)) eN.
+  by case/meN=> _; apply; [apply: setU11 | apply: setU1r].
+- case/meN=> _ ee.
+  rewrite -in_setC=> /(conj eMN) /setIP.
+  rewrite -setDE setDUl setDv set0U=> /(subsetP (subsetDl N M)) e'N.
+  by apply ee; [apply: setU1r | apply: setU11].
+- rewrite -in_setC=> /(conj e'MN) /setIP.
+  rewrite -setDE setDUl setDv set0U=> /(subsetP (subsetDl N M)) e'N.
+  rewrite -in_setC=> /(conj eMN) /setIP.
+  rewrite -setDE setDUl setDv set0U=> /(subsetP (subsetDl N M)) eN.
+  by apply: mN.
+Qed.
 
-move=> HM HN HMN.
-apply (matching_setU HM HN).
+(* ???????
 rewrite setIC big_distrr /=.
 apply big_ind.
 - done.
@@ -196,13 +242,20 @@ apply disjoint_setI0.
 have-> : \bigcup_(e in N) e = N.
 rewrite big_distrr /=.
 apply/eqP; rewrite -subset0; apply/subsetP=> x; rewrite inE.
+*)
 
-Lemma HHKO_3_aux1 G M :
-  forall e, e \in E(G) -> 
-                  M \in maximal_matchingb G ->
-                        exists e', (e' \in M) && (setI e e' != set0).
+
+Lemma HHKO_3_aux1 G M e :
+  e \in E(G) -> 
+        M \in maximal_matchingb G ->
+              exists e', (e' \in M) && (setI e e' != set0).
 Proof.
-move=> e eEG MmG.
+move=> eEG MmG.
+case/boolP: (strongly_disjoint [set e] M); last first.
+  case/strongly_disjointPn=> j [] i.
+  rewrite inE=> -[] /eqP -> [] iM ei.
+  by exists i; apply/andP; split=> //; apply/eqP.
+move/strongly_disjointP=> disj.  
 apply/existsP; move: MmG; apply contraLR=> /existsPn.
 have H: (forall x : set_of_finType G, ~~ ((x \in M) && (e :&: x != set0))) ->
         forall x : set_of_finType G, (x \in M  -> e :&: x == set0)
@@ -221,7 +274,30 @@ apply/andP; split.
   case/edgesP: eEG=> x [] y [] -> _.
   by rewrite -cards_eq0 cards2.
 - rewrite negbK.
-Abort.
+  rewrite inE; apply/andP; split;
+    first by apply/subUsetP; split;
+      [rewrite sub1set | case/matchingP: H0=> /subsetP].
+  apply/forallP=> e1.
+  apply/forallP=> e2.
+  rewrite !inE.
+  apply/implyP=> /orP [/eqP -> | e1M];
+  apply/implyP=> /orP [/eqP -> | e2M];
+  apply/forallP=> x;
+  apply/implyP=> xe1;
+  apply/implyP=> xe2.
+  + by rewrite eqxx.
+  + move/eqP: disj; apply/contraLR=> e1e2.
+    apply/set0Pn; exists x.
+    apply/bigcupP; exists e2=> //.
+    apply/bigcupP; exists e; first by rewrite inE.
+    by rewrite inE.
+  + move/eqP: disj; apply/contraLR=> e1e2.
+    apply/set0Pn; exists x.
+    apply/bigcupP; exists e1=> //.
+    apply/bigcupP; exists e; first by rewrite inE.
+    by rewrite inE.
+  + by case/matchingP: H0=> /subsetP MEG /(_ e1 e2 e1M e2M x xe1 xe2) /eqP.
+Qed.
 
 Lemma HHKO_3_aux2 G M :
   M \in maximal_matchingb G ->
