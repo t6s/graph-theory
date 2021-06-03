@@ -160,6 +160,11 @@ rewrite !inE=> /orP [] Hm /orP [] Hn x.
 - exact (HN1 m n Hm Hn x).
 Qed.
 
+Lemma matching_pushout' (G : sgraph) (M N : {set {set G}}) :
+  matching M -> matching N ->
+  (forall e, e \in M -> matching (e |: N)) ->
+  matching (M :|: N).
+
 Lemma matching_pushout (G : sgraph) (M N : {set {set G}}) :
   matching M -> matching N ->
   matching (M :&: N)-> matching (M :|: N).
